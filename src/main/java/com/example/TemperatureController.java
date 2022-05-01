@@ -16,31 +16,19 @@ import java.util.concurrent.CopyOnWriteArraySet;
 
 @RestController
 public class TemperatureController {
-    private final Set<SseEmitter> clients = new CopyOnWriteArraySet<>();
+    private final TemperatureSensor temperatureSensor; // (1)
+
+    public TemperatureController(TemperatureSensor temperatureSensor) {
+        this.temperatureSensor = temperatureSensor;
+    }
 
     @RequestMapping(
             value = "/temperature-stream",
             method = RequestMethod.GET)
     public SseEmitter events(HttpServletRequest request) {
-        SseEmitter emitter = new SseEmitter();
-        clients.add(emitter);
-        // Удалить emitter из clients в случае ошибки или разрыва соединения
-        emitter.onTimeout(() -> clients.remove(emitter));
-        emitter.onCompletion(() -> clients.remove(emitter));
+        RxSeeEmitter emitter = new RxSeeEmitter();
+        temperatureSensor.temperatureStream()
+                .subscribe(emitter.getSubscriber());
         return emitter;
-    }
-
-    @Async
-    @EventListener
-    public void handleMessage(Temperature temperature) {
-        List<SseEmitter> deadEmitters = new ArrayList<>();
-        clients.forEach(emitter -> {
-            try {
-                emitter.send(temperature, MediaType.APPLICATION_JSON);
-            } catch (Exception ignore) {
-                deadEmitters.add(emitter);
-            }
-        });
-        clients.removeAll(deadEmitters); // (15)
     }
 }
